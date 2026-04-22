@@ -1,0 +1,9 @@
+pandas==3.0.2
+numpy==2.4.4
+pyarrow==23.0.1
+duckdb==1.5.1
+faker==40.13.0
+sqlalchemy==2.0.36
+psycopg2-binary==2.9.10
+fastapi==0.115.5
+uvicorn==0.32.1
