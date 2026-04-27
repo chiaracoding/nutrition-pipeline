@@ -1,0 +1,14 @@
+# Data files — generated locally, never committed
+data/source/
+
+# Virtual environment
+.venv/
+venv/
+
+# Python
+__pycache__/
+*.pyc
+.env
+
+# VS Code
+.vscode/
