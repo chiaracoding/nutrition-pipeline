@@ -1,0 +1,21 @@
+# docker/Dockerfile.api
+# ----------------------
+# Dockerfile for the FastAPI serving layer.
+# Identical to Dockerfile.pipeline — kept separate so the
+# API can be scaled or modified independently in the future
+# without affecting the pipeline services.
+
+FROM python:3.12-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY src/ ./src/
+
+# Expose port 8000 — this documents that the container
+# listens on this port. The actual port mapping is in
+# docker-compose.yml ("8000:8000").
+EXPOSE 8000

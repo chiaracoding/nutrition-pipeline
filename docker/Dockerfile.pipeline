@@ -1,0 +1,30 @@
+# docker/Dockerfile.pipeline
+# ---------------------------
+# This Dockerfile is shared by the generate, ingestion,
+# processing, and aggregation services.
+# Each service uses the same image but runs a different command,
+# defined in docker-compose.yml.
+
+# Start from the official Python 3.12 slim image.
+# "slim" means it contains only the minimum needed to run Python —
+# no unnecessary tools, keeping the image small and secure.
+FROM python:3.12-slim
+
+# Set the working directory inside the container.
+# All subsequent commands run from this path.
+WORKDIR /app
+
+# Copy requirements first — Docker caches this layer.
+# If requirements.txt hasn't changed, Docker skips reinstalling
+# packages on the next build, making rebuilds much faster.
+COPY requirements.txt .
+
+# Install Python dependencies.
+# --no-cache-dir keeps the image smaller by not storing the pip cache.
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy the source code into the container.
+COPY src/ ./src/
+
+# The command to run is specified in docker-compose.yml,
+# not here — this keeps one Dockerfile reusable across services.
