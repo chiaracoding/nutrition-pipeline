@@ -1,0 +1,136 @@
+services:
+
+  # ── PostgreSQL database ───────────────────────────────────────────────────
+  # Central data store for all pipeline layers.
+  # All services after ingestion read from and write to this database.
+  # The healthcheck ensures PostgreSQL is fully ready before any
+  # pipeline service starts — depends_on alone is not sufficient.
+  postgres:
+    image: postgres:16-alpine
+    container_name: nutrition_db
+    environment:
+      POSTGRES_USER: pipeline
+      POSTGRES_PASSWORD: pipeline123
+      POSTGRES_DB: nutrition
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pipeline -d nutrition"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── Step 0: Data generation ─────────────────────────────────────────────
+  # Generates synthetic CSV files simulating the weekly app upload.
+  # Runs once and exits. Writes to data/source/ on the host machine.
+  generate:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.pipeline
+    container_name: nutrition_generate
+    command: python src/generate_data.py
+    volumes:
+      - ./data/source:/app/data/source
+    restart: "no"
+
+  # ── Step 1: Ingestion ───────────────────────────────────────────────────
+  # Reads CSV files, validates schema, writes to PostgreSQL raw schema.
+  # Waits for generate to complete and postgres to be healthy.
+  ingestion:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.pipeline
+    container_name: nutrition_ingestion
+    command: python src/ingestion.py
+    volumes:
+      - ./data/source:/app/data/source
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: nutrition
+      DB_USER: pipeline
+      DB_PASSWORD: pipeline123
+    depends_on:
+      generate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  # ── Step 2: Processing ──────────────────────────────────────────────────
+  # Reads from raw schema, cleans data, writes to staging schema.
+  # Waits for ingestion to complete successfully.
+  processing:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.pipeline
+    container_name: nutrition_processing
+    command: python src/processing.py
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: nutrition
+      DB_USER: pipeline
+      DB_PASSWORD: pipeline123
+    depends_on:
+      ingestion:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  # ── Step 3: Aggregation ─────────────────────────────────────────────────
+  # Reads from staging schema, runs DuckDB SQL aggregations,
+  # writes weekly summaries to analytics schema.
+  aggregation:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.pipeline
+    container_name: nutrition_aggregation
+    command: python src/aggregation.py
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: nutrition
+      DB_USER: pipeline
+      DB_PASSWORD: pipeline123
+    depends_on:
+      processing:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  # ── Step 4: API serving layer ───────────────────────────────────────────
+  # FastAPI service that exposes aggregated results as HTTP endpoints.
+  # Stays running after the pipeline completes.
+  # Access at http://localhost:8000
+  # Interactive docs at http://localhost:8000/docs
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    container_name: nutrition_api
+    command: uvicorn src.api:app --host 0.0.0.0 --port 8000 --reload
+    ports:
+      - "8000:8000"
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: nutrition
+      DB_USER: pipeline
+      DB_PASSWORD: pipeline123
+    depends_on:
+      aggregation:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+# ── Named volumes ─────────────────────────────────────────────────────────
+# postgres_data persists the database between docker-compose runs.
+# Without this the database would be empty every time you restart.
+volumes:
+  postgres_data:
