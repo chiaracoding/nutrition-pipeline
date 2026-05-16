@@ -6,7 +6,7 @@ Built with Python, PostgreSQL, DuckDB, and Docker.
 ## Overview
 
 Each Monday, the nutrition coaching app uploads a weekly food log CSV containing
-approximately 1 million timestamped entries. The pipeline processes this data
+approximately 960,000 timestamped entries. The pipeline processes this data
 automatically and serves the results via a REST API.
 
 ## Setup
@@ -28,14 +28,16 @@ The pipeline follows the medallion architecture pattern, with all data layers
 stored in PostgreSQL.
 
 ```
-CSV upload → Ingestion → raw schema → Processing → staging schema
-          → Aggregation → analytics schema → FastAPI → consumers
+CSV upload → Ingestion  → raw schema
+                        → Processing  → staging schema
+                                      → Aggregation  → analytics schema
+                                                     → FastAPI → consumers
 ```
 
-- **Ingestion** — validates incoming schema, reads weekly CSV upload, writes to `raw` schema
-- **Processing** — cleans data, fills missing values, applies Harris-Benedict formula, writes to `staging` schema
-- **Aggregation** — DuckDB SQL aggregations, produces weekly summaries per user, writes to `analytics` schema
-- **API** — FastAPI serving layer, reads from `analytics` schema, exposes results via HTTP endpoints
+- **Ingestion** reads the weekly CSV upload, validates the schema, and writes to the `raw` schema
+- **Processing** cleans data, fills missing values, applies the Harris-Benedict formula, and writes to the `staging` schema
+- **Aggregation** runs DuckDB SQL aggregations, produces weekly summaries per user, and writes to the `analytics` schema
+- **API** reads from the `analytics` schema and exposes results via HTTP endpoints
 
 ## API Endpoints
 
